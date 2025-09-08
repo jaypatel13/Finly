@@ -23,13 +23,59 @@ func NewClient(ctx context.Context, httpClient *http.Client, user string) (*Clie
 }
 
 func (c *Client) ListEmails() error {
-	emails := c.service.Users.Messages.List(c.user).MaxResults(10)
-	resp, err := emails.Do()
+	// List messages (only returns IDs and thread IDs)
+	resp, err := c.service.Users.Messages.List(c.user).MaxResults(10).Do()
 	if err != nil {
 		return fmt.Errorf("failed to list emails: %w", err)
 	}
-	for _, msg := range resp.Messages {
-		fmt.Println("Message Header:", msg.Payload.Headers)
+
+	if len(resp.Messages) == 0 {
+		fmt.Println("📧 No emails found.")
+		return nil
 	}
+
+	fmt.Printf("📧 Found %d recent emails:\n", len(resp.Messages))
+
+	// Get full message details for each email
+	for i, msg := range resp.Messages {
+		fullMsg, err := c.service.Users.Messages.Get(c.user, msg.Id).Do()
+		if err != nil {
+			fmt.Printf("   %d. Error getting message: %v\n", i+1, err)
+			continue
+		}
+
+		// Extract subject from headers
+		subject := "No Subject"
+		if fullMsg.Payload != nil && fullMsg.Payload.Headers != nil {
+			for _, header := range fullMsg.Payload.Headers {
+				if header.Name == "Subject" {
+					subject = header.Value
+					break
+				}
+			}
+		}
+
+		fmt.Printf("   %d. %s (ID: %s)\n", i+1, subject, msg.Id)
+	}
+
+	return nil
+}
+
+func (c *Client) ListLabels() error {
+	labels, err := c.service.Users.Labels.List(c.user).Do()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve labels: %v", err)
+	}
+
+	if len(labels.Labels) == 0 {
+		fmt.Println("📧 No labels found.")
+		return nil
+	}
+
+	fmt.Printf("📧 Found %d Gmail labels:\n", len(labels.Labels))
+	for _, label := range labels.Labels {
+		fmt.Printf("   • %s\n", label.Name)
+	}
+
 	return nil
 }
