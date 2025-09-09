@@ -79,3 +79,29 @@ func (c *Client) ListLabels() error {
 
 	return nil
 }
+
+func (c *Client) StartWatch(topicName string) (*gmail.WatchResponse,error) {
+	watchRquest := &gmail.WatchRequest{
+		TopicName: topicName,
+		LabelIds: []string{"INBOX"},
+	}
+	
+	resp, err := c.service.Users.Watch(c.user, watchRquest).Do()
+	if err!= nil{
+		return nil, err
+	}
+
+	fmt.Printf("Watch started successfully!")
+	fmt.Printf("    History ID: %d", resp.HistoryId)
+	fmt.Printf("    Expiration: %d",resp.Expiration)
+
+	return resp, nil
+}
+
+func (c *Client) StopWatch() error{
+	err := c.service.Users.Stop(c.user).Do()
+	if err!= nil{
+		return fmt.Errorf("failed to stop watching for push notifications %w",err)
+	}
+	return nil
+}

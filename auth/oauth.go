@@ -26,7 +26,10 @@ func NewOAuthManager(credentialsFilePath, tokenFilePath string) (*OAuthManager, 
 		return nil, fmt.Errorf("failed to read credentials file: %w", err)
 	}
 
-	config, err := google.ConfigFromJSON(credentialsJson, gmail.MailGoogleComScope)
+	config, err := google.ConfigFromJSON(
+		credentialsJson,
+		gmail.MailGoogleComScope,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
@@ -45,23 +48,39 @@ func (om *OAuthManager) GetAuthURL() string {
 func (om *OAuthManager) GetClient() (*http.Client, error) {
 	token, err := om.loadTokenFromFile()
 	if err != nil {
+		log.Printf("No valid token found, starting OAuth flow: %v", err)
 		token, err = om.getTokenFromWeb()
 		if err != nil {
 			return nil, err
 		}
 		om.saveTokenToFile(token)
+	} else {
+		log.Printf("Using existing token from file")
 	}
-	return om.config.Client(context.Background(), token), nil
+
+	tokenSource := &savingTokenSource{
+		base:    om.config.TokenSource(context.Background(), token),
+		manager: om,
+	}
+
+	return oauth2.NewClient(context.Background(), tokenSource), nil
 }
 
 func (om *OAuthManager) getTokenFromWeb() (*oauth2.Token, error) {
-	authURL := om.config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	authURL := om.config.AuthCodeURL("state-token",
+		oauth2.AccessTypeOffline,
+		oauth2.SetAuthURLParam("prompt", "consent"))
 	fmt.Printf("Open this link in your browser to authorize:\n%v\n", authURL)
 	fmt.Println("Waiting for authorization...")
 
 	select {
 	case token := <-om.tokenChan:
 		fmt.Println("Authorization successful!")
+		if token.RefreshToken == "" {
+			log.Printf(" Warning: No refresh token received. You may need to reauthorize when the token expires.")
+		} else {
+			log.Printf("Refresh token received and will be saved")
+		}
 		return token, nil
 	case <-time.After(5 * time.Minute):
 		return nil, fmt.Errorf("timeout waiting for authorization")
@@ -129,5 +148,20 @@ func (om *OAuthManager) saveTokenToFile(token *oauth2.Token) {
 	}
 	defer file.Close()
 	json.NewEncoder(file).Encode(token)
-	fmt.Printf("Token saved to: %s\n", om.tokenFile)
+	log.Printf("Token saved to: %s", om.tokenFile)
+}
+
+type savingTokenSource struct {
+	base    oauth2.TokenSource
+	manager *OAuthManager
+}
+
+func (s *savingTokenSource) Token() (*oauth2.Token, error) {
+	token, err := s.base.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	s.manager.saveTokenToFile(token)
+	return token, nil
 }
