@@ -40,8 +40,12 @@ func main() {
 			log.Fatalf("failed to create Gmail client: %v", err)
 		}
 
-		if err := gmailClient.ListEmails(); err != nil {
+		if emails, err := gmailClient.ListEmails(); err != nil {
 			log.Fatalf("Failed to list emails: %v", err)
+			for _, email := range emails {
+				log.Printf("To: %s, From: %s, Subject: %s, Body: %s", email.To, email.From, email.Subject, email.Body)
+			}
+
 		}
 
 		log.Println("Gmail operations completed successfully!")
