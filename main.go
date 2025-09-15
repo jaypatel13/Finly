@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"finly/auth"
 	"finly/gmail"
 	"finly/server"
@@ -40,15 +41,24 @@ func main() {
 			log.Fatalf("failed to create Gmail client: %v", err)
 		}
 
-		if emails, err := gmailClient.ListEmails(); err != nil {
+		emails, err := gmailClient.GetEmails(time.Now().Add(-24 * time.Hour))
+		if err != nil {
 			log.Fatalf("Failed to list emails: %v", err)
-			for _, email := range emails {
-				log.Printf("To: %s, From: %s, Subject: %s, Body: %s", email.To, email.From, email.Subject, email.Body)
-			}
-
 		}
 
-		log.Println("Gmail operations completed successfully!")
+		file, err := os.Create("emails.json")
+		if err != nil {
+			log.Fatalf("Failed to create emails.json: %v", err)
+		}
+		defer file.Close()
+
+		encoder := json.NewEncoder(file)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(emails); err != nil {
+			log.Fatalf("Failed to encode emails to JSON: %v", err)
+		}
+		log.Println("Emails saved to emails.json")
+
 	}()
 
 	select {

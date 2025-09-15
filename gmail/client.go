@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/k3a/html2text"
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 )
@@ -18,10 +19,12 @@ type Client struct {
 }
 
 type Email struct {
-	To      string
-	From    string
-	Subject string
-	Body    string
+	To            string `json:"to"`
+	From          string `json:"from"`
+	Subject       string `json:"subject"`
+	BodyHTML      string `json:"bodyHtml"`
+	BodyPlainText string `json:"bodyPlainText"`
+	Snippet       string `json:"snippet"`
 }
 
 func NewClient(ctx context.Context, httpClient *http.Client, user string) (*Client, error) {
@@ -32,27 +35,9 @@ func NewClient(ctx context.Context, httpClient *http.Client, user string) (*Clie
 	return &Client{service: service, user: user}, nil
 }
 
-func GetEmail(srv *gmail.Service, messageId string) {
+func (c *Client) GetEmails(date time.Time) ([]Email, error) {
 
-	gmailMessageResposne, err := srv.Users.Messages.Get("me", messageId).Format("RAW").Do()
-	if err != nil {
-		log.Println("error when getting mail content: ", err)
-	}
-
-	if gmailMessageResposne != nil {
-
-		decodedData, err := base64.RawURLEncoding.DecodeString(gmailMessageResposne.Raw)
-
-		if err != nil {
-			log.Println("error b64 decoding: ", err)
-		}
-		fmt.Printf("- %s\n", decodedData)
-	}
-}
-
-func (c *Client) ListEmails() ([]Email, error) {
-
-	query := fmt.Sprintf("after:%s", time.Now().Format(time.DateOnly))
+	query := fmt.Sprintf("after:%s", date.Format(time.DateOnly))
 	resp, err := c.service.Users.Messages.List(c.user).Q(query).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list emails: %w", err)
@@ -69,7 +54,6 @@ func (c *Client) ListEmails() ([]Email, error) {
 
 	// Get full message details for each email
 	for i, msg := range resp.Messages {
-		// GetEmail(c.service, msg.Id)
 		fullMsg, err := c.service.Users.Messages.Get(c.user, msg.Id).Do()
 		if err != nil {
 			fmt.Printf("   %d. Error getting message: %v\n", i+1, err)
@@ -80,7 +64,9 @@ func (c *Client) ListEmails() ([]Email, error) {
 		subject := "No Subject"
 		to := ""
 		from := ""
-		body := ""
+		bodyHTML := ""
+		bodyPlainText := ""
+		snippet := fullMsg.Snippet
 
 		if fullMsg.Payload != nil && fullMsg.Payload.Headers != nil {
 			for _, header := range fullMsg.Payload.Headers {
@@ -102,24 +88,30 @@ func (c *Client) ListEmails() ([]Email, error) {
 					if err != nil {
 						log.Printf("error decoding email body: %v", err)
 					} else {
-						body = string(decodedBody)
+						bodyPlainText = string(decodedBody)
+					}
+				}
+				if part.MimeType == "text/html" && part.Body != nil && part.Body.Data != "" {
+					decodedBody, err := base64.URLEncoding.DecodeString(part.Body.Data)
+					if err != nil {
+						log.Printf("error decoding email html body: %v", err)
+					} else {
+						bodyHTML = html2text.HTML2Text(string(decodedBody))
 					}
 				}
 			}
 		}
 
 		curEmail := Email{
-			To:      to,
-			From:    from,
-			Subject: subject,
-			Body:    body,
+			To:            to,
+			From:          from,
+			Subject:       subject,
+			BodyHTML:      bodyHTML,
+			BodyPlainText: bodyPlainText,
+			Snippet:       snippet,
 		}
 
 		emails = append(emails, curEmail)
-		fmt.Printf("   %d. To: %s\n", i+1, to)
-		fmt.Printf("      From: %s\n", from)
-		fmt.Printf("      Subject: %s\n", subject)
-		fmt.Printf("      Body: %s\n\n", body)
 	}
 
 	return emails, nil

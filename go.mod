@@ -4,6 +4,7 @@ go 1.25.1
 
 require (
 	github.com/gorilla/mux v1.8.1
+	github.com/k3a/html2text v1.2.1
 	golang.org/x/oauth2 v0.31.0
 	google.golang.org/api v0.248.0
 )
