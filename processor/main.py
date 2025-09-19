@@ -114,13 +114,16 @@ class Deps:
 def add_payload_context(ctx: RunContext[Deps]) -> str:
     """Add the email payload to the system prompt"""
     email = ctx.deps.payload
+
     
     return f"""
     Email to analyze:
     From: {email.get('from', 'Unknown')}
     Subject: {email.get('subject', 'No Subject')}
     Body: {email.get('bodyPlainText', email.get('bodyHtml', 'No content'))}
+    Snippet: {email.get('snippet', 'No snippet')}
     """
+
 
 
 def run_single_email_test():
